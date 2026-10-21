@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IonWatch Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/vendor/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>IonWatch <span id="node" class="node">–</span></h1>
+    <span id="mode" class="badge">–</span>
+    <span id="source" class="muted small"></span>
+  </div>
+  <div class="tiles">
+    <div class="tile"><div class="label">Last update</div><div id="t-update" class="value">–</div><div id="t-age" class="sub">–</div></div>
+    <div class="tile"><div class="label">Receiver</div><div id="t-recv" class="value">–</div><div id="t-recv-sub" class="sub">–</div></div>
+    <div class="tile"><div class="label">Satellites tracked</div><div id="t-sats" class="value num">–</div><div id="t-sats-sub" class="sub">above 20° with valid C/N0</div></div>
+    <div class="tile"><div class="label">L86 rate</div><div id="t-rate" class="value num">–</div><div id="t-rate-sub" class="sub">epochs per second</div></div>
+  </div>
+</header>
+
+<div id="empty" class="empty" hidden>
+  <strong>Waiting for the first minute record.</strong>
+  Live mode publishes a provisional record about 5 s after each minute ends; this page refreshes every 10 s.
+</div>
+
+<main class="grid">
+  <section class="card" id="card-sky">
+    <h2>Sky plot <span id="sky-sub" class="muted small">latest minute, tracked satellites</span></h2>
+    <div class="sky-wrap"><canvas id="sky" aria-label="Sky plot of tracked satellites coloured by C/N0"></canvas>
+      <div id="sky-tip" class="tip" hidden></div></div>
+    <div class="ramp"><span class="small muted">C/N0</span><span id="ramp-lo" class="small">15</span><span class="ramp-bar" id="ramp-bar"></span><span id="ramp-hi" class="small">50 dB-Hz</span></div>
+    <p class="note" id="sky-empty" hidden>No tracked satellites in the latest minute.</p>
+    <p class="note" id="sky-note" hidden></p>
+  </section>
+
+  <section class="card" id="card-navic">
+    <h2>NavIC</h2>
+    <div id="navic-status" class="navic-status">–</div>
+    <table class="mini"><thead><tr><th>Satellite</th><th class="num">Elev.</th><th class="num">Az.</th><th class="num">C/N0</th></tr></thead>
+      <tbody id="navic-rows"></tbody></table>
+    <p class="note" id="navic-note"></p>
+  </section>
+
+  <section class="card wide" id="card-cn0">
+    <div class="card-head">
+      <h2>C/N0 per satellite <span class="muted small">dB-Hz, 1-min mean · dashed = L5/E5a/B2a</span></h2>
+      <label class="small">Constellation
+        <select id="filter"><option value="ALL">All (colour = constellation)</option></select></label>
+    </div>
+    <div class="chart"><canvas id="cn0"></canvas></div>
+    <p class="note" id="cn0-empty" hidden>No C/N0 in the selected window.</p>
+  </section>
+
+  <section class="card wide" id="card-s4">
+    <h2 id="s4-title">S4 per satellite</h2>
+    <div class="chart"><canvas id="s4"></canvas></div>
+    <p class="note">Dashed lines: 0.3 (moderate) and 0.6 (strong). Shaded: below 2&times; the thermal-noise floor
+      (s4_noise), where S4 is not valid. Gaps: minutes with no valid S4 (too few samples, step artefact,
+      below the elevation mask).</p>
+  </section>
+
+  <section class="card wide" id="card-events">
+    <div class="card-head">
+      <h2>Fade events <span class="muted small">heuristic triage, not detection</span></h2>
+      <label class="small"><input type="checkbox" id="show-ignored"> show ignored <span id="ignored-count" class="muted"></span></label>
+    </div>
+    <div class="table-wrap"><table class="events">
+      <thead><tr><th>Time (IST)</th><th>Satellite</th><th>Band</th><th>Class</th><th>Reason</th><th class="num">Max fade</th><th>2 phones</th><th>Record</th></tr></thead>
+      <tbody id="event-rows"></tbody></table></div>
+    <p class="note" id="events-empty" hidden>No fade events in the selected window.</p>
+  </section>
+
+  <section class="card wide" id="card-warn">
+    <h2>Warnings <span class="muted small">last hour, minutes affected</span></h2>
+    <ul id="warn-list" class="warn-list"></ul>
+    <p class="note" id="warn-empty" hidden>No warnings in the last hour.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <p><strong>Event classes are heuristic triage, not detection.</strong> They combine local-cause checks,
+    the night window, dual-band fades, indicative S4 above its noise floor, a 30 dB-Hz C/N0 floor and elevation.
+    Phone S4 is <em>indicative</em> (1 Hz, quantised C/N0). TEC is not shown here: code-only TEC is
+    uncalibrated and lives in the batch outputs.</p>
+  <p>Records are <em>provisional</em> about 5 s after a minute and become <em>final</em> once the full
+    15-minute baseline and every event touching the minute are complete (normally ~8.6 min later).
+    Window <select id="hours"><option value="1">1 h</option><option value="3" selected>3 h</option><option value="6">6 h</option><option value="12">12 h</option></select>
+    · refresh every 10 s · <span id="refreshed" class="muted"></span></p>
+</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

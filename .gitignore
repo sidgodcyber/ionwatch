@@ -1,0 +1,13 @@
+# All recorded, processed, replay and benchmark data stays local (test fixtures live in tests/fixtures/,
+# the demo log in demo/).
+data/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+.netrc
+_netrc

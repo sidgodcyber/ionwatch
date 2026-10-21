@@ -1,0 +1,24 @@
+# IonWatch live L86 logger. Installed by deploy/setup_pi.sh, which fills in @USER@ and @REPO@.
+#   sudo systemctl enable --now ionwatch-live     # start now and at every boot
+#   journalctl -u ionwatch-live -f                # follow the log (also <repo>/data/live/live.log)
+[Unit]
+Description=IonWatch live L86 scintillation logger
+After=multi-user.target
+# never give up restarting
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=@USER@
+SupplementaryGroups=dialout
+WorkingDirectory=@REPO@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@REPO@/.venv/bin/python -m ionwatch.cli live --l86 /dev/serial0 --baud 9600 --node-id haldwani-01 --out @REPO@/data/live
+Restart=on-failure
+RestartSec=5
+# stop cleanly on Ctrl-C semantics; the last minute is already on disk
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

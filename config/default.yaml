@@ -1,0 +1,117 @@
+# IonWatch default processing configuration.
+# Everything is stored in UTC; display_tz is used only for *_ist columns and plot axes.
+
+node_id: haldwani-01
+elev_mask_deg: 20
+display_tz: Asia/Kolkata
+night_window_ist: ["19:30", "01:00"]
+
+# Haldwani, Uttarakhand. Used when the log has no usable Fix rows.
+location:
+  lat_deg: 29.256
+  lon_deg: 79.537
+  height_m: 500
+
+phone:
+  status_join_tolerance_s: 1.5   # Raw <-> Status nearest-time elevation join
+  status_time_gap_tol_s: 2.5     # slack when timing untimed Status blocks from file order
+  sample_rate_hz: 1
+
+quality:
+  min_epoch_fraction: 0.95       # warn below this fraction of 1 s epochs (duty cycling)
+  max_position_std_m: 20         # warn above this horizontal std of GPS fixes (phone moved)
+  low_cn0_mean_dbhz: 25          # warn if mean C/N0 is below this (indoors / obstructed)
+  min_raw_meas_per_s: 8          # warn if fewer Raw measurements per epoch
+  untracked_frac: 0.9            # list sats with C/N0 = 0 in more than this share of Status rows
+  gap_report_s: 5
+
+s4:
+  window_s: 60
+  detrend_window_s: 60           # running mean used to normalise intensity
+  min_samples: 45                # per 60 s window at 1 Hz; otherwise S4 = NaN with a reason
+  quiet_below: 0.2
+  moderate: 0.3
+  strong: 0.6
+  noise_T_s: null                # C/N0 averaging time for s4_noise; null = 1 / effective rate
+  noise_factor: 2                # S4 valid only if S4 > noise_factor x s4_noise
+  step_db: 6                     # C/N0 jump >= this ...
+  step_span_samples: 2           # ... completed within this many samples (re-lock rises over 2 epochs)
+  step_max_jumps: 2              # ... at most this many jumps in the window (dip + re-lock)
+  step_flat_std_db: 0.5          # ... and flat elsewhere: jitter std(diff)/sqrt(2) below this -> step_artifact
+
+fades:
+  baseline_window_min: 15        # running median of C/N0
+  baseline_min_frac: 0.5         # of the receiver-active seconds in the window
+  baseline_min_samples: 60       # absolute floor, so a short burst still needs 1 min of data
+  fade_threshold_db: 6
+  lock_loss_min_gap_s: 3         # missing for >= this while the receiver runs and elev >= mask
+  silence_min_s: 60              # receiver gap longer than this = a silence (duty cycling)
+  edge_guard_s: 60               # ignore fades / lock losses this close to a silence (edge_of_gap)
+
+tec:
+  avg_window_s: 60
+  shell_height_km: 350
+  max_abs_stec_tecu: 400         # reject epoch outliers before averaging
+  max_sv_time_unc_ns: 100
+  apply_elev_mask: true
+  arc_gap_s: 300                 # a new TEC arc starts after a gap longer than this
+
+dualfreq:
+  constellations: [GPS, Galileo, BeiDou]
+  min_overlap_s: 30              # seconds with both bands valid for a per-minute correlation
+
+interference:
+  frac_sats_faded: 0.6
+  min_sats: 3                    # frac_sats_faded rule needs at least this many tracked sats
+  agc_change_db: 3
+  agc_baseline_window_min: 15
+  agc_warmup_s: 60               # skip AGC this long after each receiver (re)start: front end settling
+  agc_placeholder_below_db: -100 # AgcDb at or below this is a placeholder (e.g. NavIC -135 dB)
+
+classify:
+  low_elev_deg: 30
+  iono_s4: 0.3
+  iono_likely_min_cn0: 30        # below this mean C/N0 an event is capped at iono_possible (low_cn0)
+
+# L86 (only when --l86 is given)
+l86:
+  talkers:                       # NMEA talker -> constellation
+    GP: GPS
+    GL: GLONASS
+    GA: Galileo
+    GB: BeiDou
+    BD: BeiDou
+    GQ: QZSS
+    PQ: QZSS                     # Quectel proprietary QZSS talker
+    GI: NavIC                    # NMEA 4.11 NavIC talker. The L86-M33 (MT3333) does not track NavIC,
+                                 # so NavIC comes only from the phone; GI is parsed for other receivers.
+
+live:                            # live and replay modes
+  provisional_delay_s: 5         # provisional record this long after the minute ends
+  # The final record follows once nothing batch uses can change: 7.5 min (half the 15-min
+  # baseline / AGC median) after the minute and after the end of every event touching it.
+  final_max_wait_min: 30         # publish the final anyway after this (warning final_capped)
+  history_min: 20                # C/N0 history kept before a pending minute (events starting up to
+                                 # ~12 min earlier still classify exactly like batch)
+  partial_minute_active_s: 50    # fewer receiver-active seconds -> warning receiver_partial
+  reconnect_s: 2                 # serial retry interval after unplug / open failure
+  silence_reopen_s: 30           # no bytes for this long (wall s): log no_serial_data and reopen the port
+  read_timeout_s: 0.2
+  clock_hold_s: 2                # data must be this many wall seconds overdue before the clock runs on without it
+  l86_rate_hz: 1                 # assumed until the stream shows its own epoch spacing
+  rate_measure_s: 30             # after a 5/10 Hz setup, measure the real GSV rate over this many data seconds
+
+bench:                           # IGS benchmark (bench fetch / bench run)
+  primary_stations: [LCK3, LCK4] # Lucknow, ~295 km SE of Haldwani
+  backup_stations: [IISC, HYDE]
+  elev_mask_deg: 30              # ROTI elevation cut-off (usual for ROTI)
+  roti_window_min: 5
+  min_rot_fraction: 0.6          # of the ROT samples a window can hold
+  slip_tecu: 5                   # |dSTEC| between epochs above this = cycle slip, new arc
+  roti_irregular: 0.5            # TECU/min: windows above this indicate irregularities
+  event_match_min: 15            # IGS ROTI looked up within +/- this many minutes of an event
+
+crosscheck:
+  window_s: 60
+  min_overlap_s: 30
+  event_overlap_s: 60

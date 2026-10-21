@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ionwatch.local/schema/minute_record/1.1",
+  "title": "IonWatch one-minute record",
+  "description": "One record per receiver and UTC minute. Written by batch runs (minutes.jsonl), live mode and replay mode, unchanged.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "node_id",
+    "receiver",
+    "minute_utc",
+    "status",
+    "rev",
+    "satellites",
+    "agc_flag",
+    "sats_tracked",
+    "navic_status",
+    "navic_sats",
+    "l86_rate_hz",
+    "warnings"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "node_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "receiver": {
+      "enum": [
+        "phone",
+        "phone2",
+        "l86"
+      ]
+    },
+    "minute_utc": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:00Z$"
+    },
+    "minute_ist": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "provisional",
+        "final"
+      ],
+      "description": "provisional: published ~5 s after the minute (half-window baseline). final: re-published once the full 15-min baseline, AGC median, edge guard and every event touching the minute are complete; equals the batch result."
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1 for the first publication of this minute, incremented on every re-publication"
+    },
+    "agc_flag": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "AGC moved >= agc_change_db vs its 15-min median; null = no AGC data (e.g. L86)"
+    },
+    "sats_tracked": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Satellites with valid C/N0 above the elevation mask"
+    },
+    "navic_status": {
+      "enum": [
+        "tracked",
+        "visible_not_tracked",
+        "no_data"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "satellites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "sys",
+          "svid",
+          "band",
+          "elev",
+          "az",
+          "cn0_mean",
+          "s4",
+          "s4_noise",
+          "s4_flag",
+          "fade_count",
+          "max_fade_db",
+          "lock_loss",
+          "class",
+          "source",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sys": {
+            "enum": [
+              "GPS",
+              "SBAS",
+              "GLO",
+              "QZS",
+              "BDS",
+              "GAL",
+              "NAVIC"
+            ]
+          },
+          "svid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "band": {
+            "type": "string",
+            "description": "L1, L5, E1, E5a, B1I, B1C, B2a, G1"
+          },
+          "elev": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "az": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cn0_mean": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "s4": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "s4_noise": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "s4_flag": {
+            "enum": [
+              "valid",
+              "below_noise",
+              "insufficient_samples",
+              "step_artifact",
+              "below_elev_mask",
+              "no_s4"
+            ]
+          },
+          "fade_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_fade_db": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lock_loss": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "class": {
+            "enum": [
+              "none",
+              "edge_of_gap",
+              "local",
+              "local_or_unknown",
+              "iono_likely",
+              "iono_possible",
+              "low_elev"
+            ]
+          },
+          "source": {
+            "enum": [
+              "raw",
+              "status",
+              "nmea",
+              "mixed"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "why the classifier chose `class` ('' when class is none)"
+          },
+          "both_phones": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "two-phone sessions: the same satellite and band faded on both phones within 30 s (true) or on this phone only (false); null with one phone"
+          }
+        }
+      }
+    },
+    "l86_rate_hz": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "L86 epochs per second measured in this minute; null for the phone"
+    },
+    "navic_sats": {
+      "type": "array",
+      "description": "NavIC satellites listed this minute, tracked or not",
+      "items": {
+        "type": "object",
+        "required": [
+          "svid",
+          "elev",
+          "az",
+          "cn0_mean"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "svid": {
+            "type": "integer"
+          },
+          "elev": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "az": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cn0_mean": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+# Files executed on the Pi must keep LF endings even when committed from Windows.
+*.sh       text eol=lf
+*.service  text eol=lf
+*.py       text eol=lf
+# NMEA fixtures carry CRLF on purpose (as the L86 sends them).
+*.nmea     -text
+*.gz binary
+*.Z binary
+*.png binary
+# Fixtures are compared byte-for-byte against real logs: never convert line endings.
+tests/fixtures/** -text
