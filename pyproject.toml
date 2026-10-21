@@ -9,7 +9,7 @@ description = "Offline ionospheric scintillation pipeline for low-cost GNSS rece
 requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0,<3",               # pandas 3 changes datetime resolution (ms vs ns) and breaks merge_asof joins
-    "numpy>=1.24",
+    "numpy>=1.24,<2.5",             # 2.5 deprecates generic timedelta units used inside pandas 2.x
     "pyarrow>=12",
     "matplotlib>=3.7",
     "pyyaml>=6",
