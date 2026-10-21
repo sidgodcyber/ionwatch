@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Offline ionospheric scintillation pipeline for low-cost GNSS receivers (Android GnssLogger, Quectel L86)"
 requires-python = ">=3.10"
 dependencies = [
-    "pandas>=2.0",
+    "pandas>=2.0,<3",               # pandas 3 changes datetime resolution (ms vs ns) and breaks merge_asof joins
     "numpy>=1.24",
     "pyarrow>=12",
     "matplotlib>=3.7",
