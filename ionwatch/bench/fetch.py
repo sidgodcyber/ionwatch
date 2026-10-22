@@ -61,19 +61,27 @@ def plan(date: pd.Timestamp) -> list[Item]:
     brdm = f"BRDM00DLR_S_{Y}{D}0000_01D_MN.rnx.gz"
     items.append(Item("nav_BRDM", "nav", [f"{CDDIS}/data/daily/{Y}/brdc/{brdm}", f"{BKG}/BRDC/{Y}/{D}/{brdm}"],
                       brdm, required=True))
-    gim = [f"{CDDIS}/products/ionex/{Y}/{D}/IGS0OPSFIN_{Y}{D}0000_01D_02H_GIM.INX.gz",
-           f"{CDDIS}/products/ionex/{Y}/{D}/IGS0OPSRAP_{Y}{D}0000_01D_02H_GIM.INX.gz",
-           f"{CDDIS}/products/ionex/{Y}/{D}/IGS0OPSRAP_{Y}{D}0000_01D_01H_GIM.INX.gz",
-           f"{JPL}/IONEX_final/y{Y}/JPLH{D}0.{yy}I.gz",
+    ion = f"{CDDIS}/products/ionex/{Y}/{D}"
+    igs = [f"{ion}/IGS0OPSFIN_{Y}{D}0000_01D_02H_GIM.INX.gz",          # IGS combined: rapid ~2 days, final ~11 days
+           f"{ion}/IGS0OPSRAP_{Y}{D}0000_01D_02H_GIM.INX.gz",
+           f"{ion}/IGS0OPSRAP_{Y}{D}0000_01D_01H_GIM.INX.gz"]
+    jpl = [f"{JPL}/IONEX_final/y{Y}/JPLH{D}0.{yy}I.gz",
            f"{JPL}/IONEX_final/y{Y}/JPLG{D}0.{yy}I.gz",
            f"{JPL}/IONEX_rapid/JPLR{D}0.{yy}I.gz",
-           f"{UPC}/{Y}/{D}_{p['ymd']}.15min/UPC0OPSFIN_{Y}{D}0000_01D_02H_GIM.INX.Z",
-           f"{UPC}/{Y}/{D}_{p['ymd']}.15min/UPC0OPSRAP_{Y}{D}0000_01D_02H_GIM.INX.Z"]
-    items.append(Item("ionex", "ionex", gim, "GIM", required=True))
-    items.append(Item("ionex_check", "ionex", gim[::-1][:2] + gim[3:6], "GIM_check"))   # a second producer
-    items.append(Item("bias", "bias", [f"{CDDIS}/products/bias/{Y}/CAS0OPSRAP_{Y}{D}0000_01D_01D_DCB.BSX.gz",
-                                       f"{CDDIS}/products/bias/{Y}/CAS0MGXRAP_{Y}{D}0000_01D_01D_DCB.BSX.gz",
-                                       f"{CDDIS}/products/{p['week']}/COD0OPSFIN_{Y}{D}0000_01D_01D_OSB.BIA.gz"],
+           f"{ion}/JPL0OPSRAP_{Y}{D}0000_01D_02H_GIM.INX.gz"]
+    upc = [f"{UPC}/{Y}/{D}_{p['ymd']}.15min/UPC0OPSFIN_{Y}{D}0000_01D_02H_GIM.INX.Z",
+           f"{UPC}/{Y}/{D}_{p['ymd']}.15min/UPC0OPSRAP_{Y}{D}0000_01D_02H_GIM.INX.Z",
+           f"{ion}/UPC0OPSRAP_{Y}{D}0000_01D_02H_GIM.INX.gz"]
+    cod_esa = [f"{ion}/COD0OPSFIN_{Y}{D}0000_01D_01H_GIM.INX.gz",       # CODE and ESA rapid: next day, CDDIS only
+               f"{ion}/COD0OPSRAP_{Y}{D}0000_01D_01H_GIM.INX.gz",
+               f"{ion}/ESA0OPSRAP_{Y}{D}0000_01D_02H_GIM.INX.gz"]
+    items.append(Item("ionex", "ionex", igs + jpl + upc + cod_esa, "GIM", required=True))
+    # A second producer (fetch skips the primary's): prefer the IGS combined map.
+    items.append(Item("ionex_check", "ionex", igs + upc + cod_esa + jpl, "GIM_check"))
+    items.append(Item("bias", "bias", [f"{CDDIS}/products/bias/{Y}/CAS0OPSRAP_{Y}{D}0000_01D_01D_DCB.BIA.gz",
+                                       f"{CDDIS}/products/bias/{Y}/GFZ0OPSRAP_{Y}{D}0000_01D_01D_DCB.BIA.gz",
+                                       f"{CDDIS}/products/{p['week']}/COD0OPSFIN_{Y}{D}0000_01D_01D_OSB.BIA.gz",
+                                       f"{CDDIS}/products/{p['week']}/COD0OPSRAP_{Y}{D}0000_01D_01D_OSB.BIA.gz"],
                       "BIAS"))
     t0, t1 = f"{p['date']}T00:00:00Z", f"{p['date']}T23:59:59Z"
     items.append(Item("kp_swpc", "kp", [SWPC_KP], "kp_swpc.json"))
@@ -89,23 +97,70 @@ def producer(url: str) -> str:
     return "IGS" if u.startswith("IGS0OPS") else "JPL" if u.startswith("JPL") else "UPC" if "UPC" in u else u[:3]
 
 
+EARTHDATA = "urs.earthdata.nasa.gov"
+REPO = Path(__file__).resolve().parents[2]
+
+
+def netrc_file() -> Path | None:
+    """The netrc file requests will use: $NETRC, else ~/.netrc, else ~/_netrc (Windows convention)."""
+    import os
+    if os.environ.get("NETRC"):
+        p = Path(os.path.expanduser(os.environ["NETRC"]))
+        return p if p.is_file() else None
+    home = Path(os.path.expanduser("~"))
+    return next((home / n for n in (".netrc", "_netrc") if (home / n).is_file()), None)
+
+
+def earthdata_login() -> dict:
+    """Whether an Earthdata login is available, without ever returning or logging the credentials.
+
+    requests silently ignores a netrc it cannot parse, so problems are reported here instead
+    (by line number only: the parser's message can quote tokens from the file)."""
+    import netrc
+    p = netrc_file()
+    if p is None:
+        return {"ok": False, "file": None, "problem": "no ~/.netrc or ~/_netrc"}
+    info = {"ok": False, "file": str(p), "problem": ""}
+    if p.resolve().is_relative_to(REPO):
+        info["problem"] = f"{p.name} is inside the project folder; move it to your user folder"
+        return info
+    try:
+        found = netrc.netrc(p).authenticators(EARTHDATA) is not None
+    except netrc.NetrcParseError as e:
+        info["problem"] = f"cannot parse {p.name} (line {e.lineno})"
+        return info
+    except OSError as e:
+        info["problem"] = f"cannot read {p.name} ({type(e).__name__})"
+        return info
+    info["ok"] = found
+    if not found:
+        info["problem"] = f"no 'machine {EARTHDATA}' entry in {p.name}"
+    return info
+
+
 def session():
-    """requests session: ~/.netrc credentials are re-applied on the redirect to the Earthdata login."""
+    """requests session: the netrc credentials are re-applied on the redirect to the Earthdata login
+    (requests looks up the netrc per host). Cookies live in memory only; nothing is written to disk."""
     import requests
     s = requests.Session()
     s.headers["User-Agent"] = "ionwatch-bench/1.0"
     return s
 
 
-def _download(sess, url: str, timeout=(15, 120), tries: int = 2) -> tuple[bytes | None, str]:
+def _download(sess, url: str, timeout=(15, 120), tries: int = 4) -> tuple[bytes | None, str]:
+    """Retries cover transient resets mid-transfer; an unreachable host is not retried. (On 2026-10-22
+    CDDIS reset nearly every request for the DOY 293 bias files right after the headers, while
+    station files downloaded normally: a server-side issue that retrying harder did not fix.)"""
+    import time
     for attempt in range(tries):
         try:
             r = sess.get(url, timeout=timeout, allow_redirects=True)
             break
-        except Exception as e:                               # network down, DNS, TLS, host unreachable
+        except Exception as e:      # network down, DNS, TLS, host unreachable, reset mid-transfer
             err = f"{type(e).__name__}: {str(e).split('(Caused')[0]}"[:200]
-            if attempt == tries - 1:
-                return None, err
+            if attempt == tries - 1 or "ConnectTimeout" in err:
+                return None, err + (f" (after {tries} tries)" if attempt == tries - 1 else "")
+            time.sleep(min(2 * (attempt + 1), 6))
     if r.status_code != 200:
         return None, f"HTTP {r.status_code}"
     ctype = r.headers.get("content-type", "")
@@ -124,7 +179,8 @@ def fetch(date: pd.Timestamp, out: Path, sess=None, items: list[Item] | None = N
     folder.mkdir(parents=True, exist_ok=True)
     sess = sess or session()
     items = items or plan(date)
-    manifest = {"date_utc": p["date"], "doy": int(p["doy"]), "folder": str(folder), "items": {}}
+    manifest = {"date_utc": p["date"], "doy": int(p["doy"]), "folder": str(folder),
+                "earthdata_login": earthdata_login()["ok"], "items": {}}
     got_ionex_from = None
     for it in items:
         tries = []

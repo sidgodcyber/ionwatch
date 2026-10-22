@@ -185,6 +185,11 @@ def bench_fetch(out, date, processed, config_path):
     from ionwatch.bench import fetch as fetchmod
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     cfg = load_config(config_path)
+    login = fetchmod.earthdata_login()
+    if login["ok"]:
+        click.echo(f"Earthdata login: found in {login['file']} (CDDIS enabled)")
+    else:
+        click.echo(f"Earthdata login: not used ({login['problem']}); anonymous mirrors only. See README.")
     bad = False
     for d in _bench_dates(date, processed, cfg):
         m = fetchmod.fetch(d, Path(out))

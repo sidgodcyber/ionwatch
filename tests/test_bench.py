@@ -85,6 +85,21 @@ def test_space_weather_cross_checks(tmp_path):
     assert validate.check("kp", tmp_path / "kp_swpc.json", DATE, "kp_swpc")["info"]["max"] == 3.0
 
 
+def test_cross_check_verdicts_are_json_booleans(tmp_path):
+    """numpy bools were written as the string "True"/"False" (and "False" is truthy when read back)."""
+    for f in ("JPLR2920.26I.gz", "UPC0OPSRAP_20262920000_01D_02H_GIM.INX.Z"):
+        shutil.copy(FX / f, tmp_path / f)
+    man = {"items": {"ionex": {"ok": True, "file": "JPLR2920.26I.gz"},
+                     "ionex_check": {"ok": True, "file": "UPC0OPSRAP_20262920000_01D_02H_GIM.INX.Z"},
+                     "obs_LCK3": {"ok": False, "tried": [{"status": "HTTP 404"}]}}}
+    checks = json.loads(json.dumps(validate.cross_checks(tmp_path, man, DATE - pd.Timedelta(days=1)), default=str))
+    gim = next(c for c in checks if c["check"].startswith("GIM JPLR"))
+    assert gim["ok"] is True
+    assert all(c["ok"] in (True, False, None) for c in checks)
+    st = next(c for c in checks if c["check"].startswith("IGS stations"))
+    assert st["ok"] is False and "missing LCK3 (HTTP 404)" in st["note"] and "without an Earthdata login" in st["note"]
+
+
 class FakeResponse:
     def __init__(self, url, status=200, content=b"", html=False):
         self.url, self.status_code, self.content = url, status, content
@@ -122,6 +137,57 @@ def test_fetch_falls_back_from_cddis_and_uses_a_second_gim_producer(tmp_path, mo
     assert m["stations_ok"] == ["LCK4"] and m["missing_required"] == []
     assert json.loads((tmp_path / "2026-293" / "manifest.json").read_text())["doy"] == 293
     assert not any("password" in u or "@" in u.split("//")[1].split("/")[0] for u in sess.calls)   # no credentials in URLs
+
+
+SECRET = "s3cr3t-Pa55"
+
+
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    h = tmp_path / "home"
+    h.mkdir()
+    monkeypatch.delenv("NETRC", raising=False)
+    monkeypatch.setenv("HOME", str(h))
+    monkeypatch.setenv("USERPROFILE", str(h))
+    return h
+
+
+@pytest.mark.parametrize("name", [".netrc", "_netrc"])
+def test_earthdata_login_found_in_netrc_or_underscore_netrc(home, name):
+    (home / name).write_text(f"machine urs.earthdata.nasa.gov login someone password {SECRET}\n")
+    info = fetch.earthdata_login()
+    assert info["ok"] and info["file"].endswith(name) and SECRET not in json.dumps(info)
+
+
+def test_earthdata_login_problems_never_show_the_secret(home):
+    assert fetch.earthdata_login()["problem"] == "no ~/.netrc or ~/_netrc"
+    (home / ".netrc").write_text(f"machine example.org login a password {SECRET}\n")
+    assert "no 'machine urs.earthdata.nasa.gov' entry" in fetch.earthdata_login()["problem"]
+    (home / ".netrc").write_text(f"machine urs.earthdata.nasa.gov login a password {SECRET}\n{SECRET} junk\n")
+    info = fetch.earthdata_login()
+    assert not info["ok"] and info["problem"] == "cannot parse .netrc (line 2)" and SECRET not in json.dumps(info)
+
+
+def test_netrc_inside_project_is_refused(home, monkeypatch):
+    inside = fetch.REPO / "tests" / "_netrc_inside_test"
+    inside.write_text(f"machine urs.earthdata.nasa.gov login a password {SECRET}\n")
+    try:
+        monkeypatch.setenv("NETRC", str(inside))
+        info = fetch.earthdata_login()
+        assert not info["ok"] and "inside the project folder" in info["problem"]
+    finally:
+        inside.unlink()
+
+
+def test_fetch_output_and_manifest_never_contain_credentials(home, tmp_path, monkeypatch):
+    (home / ".netrc").write_text(f"machine urs.earthdata.nasa.gov login someone password {SECRET}\n")
+    monkeypatch.setattr(validate, "check", lambda kind, path, date, name="": {"ok": True, "problems": [], "info": {}})
+    monkeypatch.setattr(validate, "cross_checks", lambda folder, man, date: [])
+    monkeypatch.setattr(fetch, "session", lambda: FakeSession({"LCK400IND": b"x", "BRDM00DLR": b"x", "JPLR2930": b"x"}))
+    res = CliRunner().invoke(cli, ["bench", "fetch", "--date", "2026-10-20", "--out", str(tmp_path / "b")])
+    assert "Earthdata login: found in" in res.output and SECRET not in res.output and "someone" not in res.output
+    man = (tmp_path / "b" / "2026-293" / "manifest.json").read_text()
+    assert json.loads(man)["earthdata_login"] is True and SECRET not in man and "someone" not in man
 
 
 def test_validation_rejects_wrong_files(tmp_path):

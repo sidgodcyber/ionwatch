@@ -140,6 +140,7 @@ def run(bench_dir: Path, processed: Path, cfg: dict) -> dict:
                                     _r(vtec[(vtec.index >= n0) & (vtec.index <= n1)].max())],
                "day_max_tecu": _r(vtec.max()), "day_max_ist": _ist(vtec.idxmax(), cfg)},
            "for_slides": slides, "events": ev_rows, "verdict": verdict, "orbit_check": orbit, "cross_checks": man.get("cross_checks", []),
+           "earthdata_login": man.get("earthdata_login"),
            "sources": {k: {"ok": v.get("ok"), "url": v.get("url"), "file": v.get("file"),
                            "sha256": (v.get("sha256") or "")[:12], "status": v.get("status")}
                        for k, v in items.items()}}
@@ -336,9 +337,11 @@ def markdown(r: dict, cfg) -> str:
         L.append(f"| {k} | {'yes' if v['ok'] else 'no'} | {v['file'] or '–'} | {v['sha256'] or '–'} | {status} |")
     missing = [k for k, v in r["sources"].items() if not v["ok"]]
     if missing:
-        L += ["", "**To complete elsewhere:** " + ", ".join(missing) +
-              " (CDDIS items need an Earthdata login in ~/.netrc; GIMs from other producers appear 1–2 days later; "
-              "re-run `bench fetch` then `bench run`)."]
+        why = ("HTTP 404 = not in the archive for this day; IGS combined GIMs appear ~2 days later; "
+               "connection errors are transient or the host is unreachable from this network"
+               if r.get("earthdata_login") else "CDDIS items need an Earthdata login in ~/.netrc; "
+               "GIMs from other producers appear 1–2 days later")
+        L += ["", "**Not available:** " + ", ".join(missing) + f" ({why}; re-run `bench fetch` then `bench run`)."]
     near = min(r["stations"], key=lambda s: s["distance_km"]) if r["stations"] else None
     L += ["", f"_{near['station'] if near else 'The IGS station'} is ~{near['distance_km'] if near else '?'} km from "
           "Haldwani: its ROTI is a regional reference, not the same ionospheric pierce points. Our classes are "

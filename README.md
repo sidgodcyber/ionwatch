@@ -126,7 +126,9 @@ night window, GIM VTEC at Haldwani and Kp for that night, checks the broadcast o
 own satellite elevations, and writes `bench_summary.md` with our event times against IGS ROTI.
 
 Without a login, the anonymous mirrors still provide LCK4 and IISC (BKG), BRDM (BKG), JPL and UPC GIMs.
-LCK3, HYDE, the IGS combined GIM and the bias files are on NASA CDDIS only.
+The IGS combined GIM (~2 days after the day), CODE and ESA GIMs (next day) and the bias files (CAS/GFZ
+DCB, CODE OSB) are on NASA CDDIS only. Station files vary by day: for 20 Oct 2026 LCK3 and HYDE are not
+in any archive (HTTP 404 on CDDIS too), so the benchmark uses LCK4 and IISC.
 
 ### Earthdata login (NASA CDDIS)
 
@@ -134,14 +136,19 @@ LCK3, HYDE, the IGS combined GIM and the bias files are on NASA CDDIS only.
    https://cddis.nasa.gov/archive/ in a browser (accepts the terms).
 2. Put the credentials in a netrc file, **never in the code or the config**:
    - Linux / macOS / Pi: `~/.netrc`, then `chmod 600 ~/.netrc`
-   - Windows: `%USERPROFILE%\.netrc` (or `_netrc`)
+   - Windows: `%USERPROFILE%\.netrc` (`_netrc` is also accepted; `NETRC=<path>` overrides both)
+   - Never inside the project folder: `bench fetch` refuses a netrc there, and `.gitignore` excludes
+     `.netrc` / `_netrc`.
 
    ```
    machine urs.earthdata.nasa.gov login <your user name> password <your password>
    ```
-3. Check: `python -m ionwatch.cli bench fetch --date 2026-10-20` should now list `obs_LCK3` and `bias`
-   from `cddis.nasa.gov`. `requests` re-applies the netrc credentials when CDDIS redirects to the
-   Earthdata login; nothing is written to disk except the downloaded files.
+3. Check: `python -m ionwatch.cli bench fetch --date 2026-10-20` prints
+   `Earthdata login: found in <path> (CDDIS enabled)` (or why it is not used: no file, no
+   `urs.earthdata.nasa.gov` entry, a parse error by line number; never the contents), and `ionex_check`
+   then comes from `cddis.nasa.gov`. `requests` re-applies the netrc credentials when CDDIS redirects
+   to the Earthdata login; session cookies stay in memory, and nothing is written to disk except the
+   downloaded files.
 
 ## Live / replay output
 

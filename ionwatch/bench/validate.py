@@ -137,13 +137,19 @@ def cross_checks(folder: Path, manifest: dict, date: pd.Timestamp) -> list[dict]
         out.append({"check": f"GIM {Path(items['ionex']['file']).name} vs {Path(items['ionex_check']['file']).name} "
                              "at Haldwani", "n": len(j), "mean_diff_tecu": round(float(diff.mean()), 2),
                     "rms_tecu": round(float(np.sqrt((diff ** 2).mean())), 2), "corr": round(corr, 3) if corr else None,
-                    "ok": corr is not None and corr > 0.9 and abs(diff.mean()) < 8,
+                    "ok": bool(corr is not None and corr > 0.9 and abs(diff.mean()) < 8),   # not numpy: JSON
                     "note": "independent GIM producers; corr > 0.9 and |mean| < 8 TECU expected"})
     else:
         out.append({"check": "GIM vs a second producer", "ok": None,
                     "note": "only one GIM producer available for this day (others publish 1-2 days later)"})
     stations = [n for n, r in items.items() if n.startswith("obs_") and r.get("ok")]
+    missing = []
+    for n, r in items.items():
+        if n.startswith("obs_") and not r.get("ok"):
+            why = sorted({t["status"] for t in r.get("tried", [])}) or [r.get("status", "?")]
+            missing.append(f"{n[4:]} ({'; '.join(why)})")
+    login = "with" if manifest.get("earthdata_login") else "without"
     out.append({"check": "IGS stations downloaded and valid", "stations": [s[4:] for s in stations],
                 "ok": bool(stations),
-                "note": "LCK3/HYDE are only on CDDIS (login); LCK4/IISC also on BKG"})
+                "note": (f"missing {', '.join(missing)}; " if missing else "") + f"tried {login} an Earthdata login"})
     return out
